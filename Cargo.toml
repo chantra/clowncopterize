@@ -1,0 +1,23 @@
+[package]
+name = "clowncopterize"
+authors = ["Manu Bretelle <chantr4@gmail.com>"]
+repository = "https://github.com/chantra/clowncopterize"
+homepage = "https://github.com/chantra/clowncopterize"
+documentation = "https://docs.rs/clowncopterize/"
+license = "MIT"
+version = "0.0.1"
+edition = "2024"
+description = "A clown to rule them all!"
+readme = "README.md"
+
+[lib]
+proc-macro = true
+path = "src/lib.rs"
+
+[dependencies]
+syn = {version = "2.0", features = ["full", "extra-traits"]}
+quote = "1.0"
+
+
+[dev-dependencies]
+clap = { version = "4", features = ["derive"] }
