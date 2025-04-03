@@ -14,14 +14,14 @@
 //!
 //! ## Usage
 //! Wrap you clap Parser struct with
-//! ```
+//! ```ignore
 //! #[clowncopterize::clowncopterize]
 //! ```
 //!
 //! This macro must be above the derive one.
 //!
 //! ### Example
-//! ```
+//! ```ignore
 //! #[clowncopterize::clowncopterize]
 //! #[derive(Parser, Debug)]
 //! struct Cli {
