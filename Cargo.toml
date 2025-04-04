@@ -15,9 +15,9 @@ proc-macro = true
 path = "src/lib.rs"
 
 [dependencies]
-syn = {version = "2.0", features = ["full", "extra-traits"]}
+proc-macro2 = "1.0"
 quote = "1.0"
-
+syn = {version = "2.0", features = ["full", "extra-traits"]}
 
 [dev-dependencies]
 clap = { version = "4", features = ["derive"] }

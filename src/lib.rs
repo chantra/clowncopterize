@@ -40,8 +40,8 @@
 //!
 
 use proc_macro::TokenStream;
+use proc_macro2::{Ident, Span};
 use quote::ToTokens;
-use syn;
 
 const CLOWNCOPTERIZE_PREFIX: &str = "clowntown";
 const CLOWNCOPTERIZE_FLAG: &str = "clowncopterize";
@@ -67,6 +67,8 @@ impl syn::parse::Parse for ParsableNamedField {
 /// ```
 /// use clap::Parser;
 ///
+/// // by default, uses `--clowncopterize` flag:
+///
 /// #[clowncopterize::clowncopterize]
 /// #[derive(Parser, Debug)]
 /// struct Cli {
@@ -86,66 +88,130 @@ impl syn::parse::Parse for ParsableNamedField {
 /// let cli = Cli::try_parse_from(vec!["prog", "--clowncopterize"]).unwrap();
 ///
 /// println!("Cli! {:#?}", cli);
-/// assert!(cli.clowntown_this)
+/// assert!(cli.clowntown_this);
+///
+/// // but can be customized with the `clowncopterizer` attribute:
+///
+/// #[clowncopterize::clowncopterize(clowncopterizer = "i-live-in-clowntown")]
+/// #[derive(Parser, Debug)]
+/// struct CliCustom {
+///     /// Optional name to operate on
+///     name: Option<String>,
+///
+///     /// Turn debugging information on
+///     #[arg(long)]
+///     clowntown_this: bool,
+///
+///     /// lists test values
+///     #[arg(long)]
+///     clowntown_that: bool,
+/// }
+///
+///
+/// let cli = CliCustom::try_parse_from(vec!["prog", "--i-live-in-clowntown"]).unwrap();
+///
+/// println!("Cli! {:#?}", cli);
+/// assert!(cli.clowntown_this);
 /// ```
 #[proc_macro_attribute]
-pub fn clowncopterize(_attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn clowncopterize(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let clowncopterizer = syn::parse_macro_input!(attr as Clowncopterize);
+
     let item_struct: syn::ItemStruct = syn::parse_macro_input!(item);
-    let out = clowncopterize_struct(item_struct);
+    let out = clowncopterizer.clowncopterize_struct(item_struct);
     proc_macro::TokenStream::from(out.to_token_stream())
 }
 
-fn clowncopterize_struct(mut ast: syn::ItemStruct) -> syn::ItemStruct {
-    let mut is_clown = false;
-    if let syn::Fields::Named(ref mut fields) = ast.fields {
-        // iterate over each fields and modify any fields that start with `clowntown` and is a boolean.
-        fields.named =
-            syn::punctuated::Punctuated::from_iter(fields.named.iter_mut().map(|field| {
-                match &field.ty {
-                    syn::Type::Path(type_path) => {
+#[derive(Debug)]
+struct Clowncopterize {
+    clowncopterizer: String,
+}
+
+impl Default for Clowncopterize {
+    fn default() -> Self {
+        Clowncopterize {
+            clowncopterizer: CLOWNCOPTERIZE_FLAG.to_string(),
+        }
+    }
+}
+
+impl syn::parse::Parse for Clowncopterize {
+    fn parse(input: syn::parse::ParseStream) -> syn::parse::Result<Self> {
+        if input.is_empty() {
+            return Ok(Clowncopterize {
+                ..Default::default()
+            });
+        }
+        let attr_name = input.parse::<syn::Ident>()?;
+        assert_eq!(
+            attr_name, "clowncopterizer",
+            "Unexpected attribute {}",
+            attr_name
+        );
+        input.parse::<syn::Token![=]>()?;
+        let attr_value = input.parse::<syn::LitStr>()?;
+
+        Ok(Clowncopterize {
+            clowncopterizer: attr_value.value().replace("-", "_"),
+        })
+    }
+}
+
+impl Clowncopterize {
+    fn clowncopterize_struct(&self, mut ast: syn::ItemStruct) -> syn::ItemStruct {
+        let mut is_clown = false;
+        if let syn::Fields::Named(ref mut fields) = ast.fields {
+            // iterate over each fields and modify any fields that start with `clowntown` and is a boolean.
+            fields.named =
+                syn::punctuated::Punctuated::from_iter(fields.named.iter_mut().map(|field| {
+                    if let syn::Type::Path(type_path) = &field.ty {
                         if type_path.path.is_ident("bool") {
                             if let Some(ref ident) = field.ident {
                                 if ident.to_string().starts_with(CLOWNCOPTERIZE_PREFIX) {
                                     is_clown = true;
-                                    return clowncopterize_field(field);
+                                    return self.clowncopterize_field(field);
                                 }
                             }
                         }
                     }
-                    _ => {}
+                    field.clone()
+                }));
+            // There is at least 1 clowntown flag, add our clowncopterize flag.
+            if is_clown {
+                let clowncopterizer = Ident::new(&self.clowncopterizer, Span::call_site());
+                let punctuated_fields: syn::punctuated::Punctuated<
+                    ParsableNamedField,
+                    syn::Token![,],
+                > = syn::parse_quote! {
+                    /// Turns all the clowntown flags on
+                    #[arg(long)]
+                    #clowncopterizer: bool
                 };
-                field.clone()
-            }));
-        // There is at least 1 clowntown flag, add our clowncopterize flag.
-        if is_clown {
-            let punctuated_fields: syn::punctuated::Punctuated<ParsableNamedField, syn::Token![,]> = syn::parse_quote! {
-                /// Turns all the clowntown flags on
-                #[arg(long)]
-                clowncopterize: bool,
-            };
-            for punctuated_field in punctuated_fields {
-                fields.named.push(punctuated_field.field);
+                for punctuated_field in punctuated_fields {
+                    fields.named.push(punctuated_field.field);
+                }
             }
         }
+        ast
     }
-    ast
-}
 
-fn clowncopterize_field(ast: &mut syn::Field) -> syn::Field {
-    for attr in ast.attrs.iter_mut() {
-        if attr.path().is_ident("arg") {
-            let meta = attr.meta.require_list().unwrap();
-            let mut tokens = meta.tokens.clone();
-            let ext = quote::quote! {
-                , default_value_if(#CLOWNCOPTERIZE_FLAG, "true", "true")
-            };
-            tokens.extend(ext);
-            attr.meta = syn::Meta::List(syn::MetaList {
-                path: meta.path.clone(),
-                delimiter: meta.delimiter.clone(),
-                tokens: tokens,
-            });
+    fn clowncopterize_field(&self, ast: &mut syn::Field) -> syn::Field {
+        for attr in ast.attrs.iter_mut() {
+            if attr.path().is_ident("arg") {
+                let meta = attr.meta.require_list().unwrap();
+                let mut tokens = meta.tokens.clone();
+                let clowncopterizer = &self.clowncopterizer;
+                let ext = quote::quote! {
+                    , default_value_if(#clowncopterizer, "true", "true")
+                };
+                tokens.extend(ext);
+                attr.meta = syn::Meta::List(syn::MetaList {
+                    path: meta.path.clone(),
+                    delimiter: meta.delimiter.clone(),
+                    tokens,
+                });
+            }
         }
+        ast.clone()
     }
-    ast.clone()
 }
